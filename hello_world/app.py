@@ -21,14 +21,23 @@ def detect_label(image):
         MinConfidence=70)
         return response
     except Exception as e:
-        print("Error processing detect label")
+        print("Error processing detect label rekognition")
         raise e
 
 def from_encoded_string_to_bytes(file):
-    with open(file, "rb") as cf:
-        base64_image = base64.b64encode(cf.read())
-        base_64_binary = base64.decodebytes(base64_image)
-    return base_64_binary
+    #with open(file, "rb") as cf:
+    #    base64_image = base64.b64encode(cf.read())
+    #    print('string')
+    #    print(base64_image)
+
+    try:
+        #base_64_binary = base64.decodebytes(file)
+        base_64_binary = base64.b64decode(file).decode('utf-8')
+        return base_64_binary
+    except Exception as e:
+        print("Error processing detect label")
+        raise e
+
 
 def detect_allowed_animal(labels):
     labels_tested = [ label for label in labels if label.lower() in ANIMALS]
@@ -85,41 +94,37 @@ def lambda_handler(event, context):
 
     #     raise e
     #request = json.dumps(event, indent=2, skipkeys=True)
-    body = json.loads(event['body'])
+    request = json.loads(event['body'])
+    images_length = request['images_length']
+    pictures = request['pictures']
+    print(request)
     #image = body['image']
+    for pic in pictures:
+        print(pic)
 
     #Images' length
     images_counter = 4
-    print(body)
-    print(body['image'])
-
     #Get images from app
-    request = {
-        'images_length': 4,
-        'pictures': [
-            'cat1.jpeg',
-            'cat1.jpeg',
-            'cat1.jpeg',
-            'cat1.jpeg'
-        ]
-    }
     response_list = []
     index = 0
     for picture in request['pictures']:
-        #get binary from encoded string
+        # get binary from encoded string
         base_64_binary = from_encoded_string_to_bytes(picture)
+        print('binary')
+        print(base_64_binary)
         try:
             response = detect_label(base_64_binary)
-            labels = [{label_prediction['Name']: label_prediction['Confidence']} for label_prediction in response['Labels']]
-            keys = [ list(label.keys())[0] for label in labels]
-            values = [ list(label)[0] for label in labels]
+            labels = [{label_prediction['Name']: label_prediction['Confidence']} for label_prediction in
+                      response['Labels']]
+            keys = [list(label.keys())[0] for label in labels]
+            values = [list(label)[0] for label in labels]
             allowed_picture = detect_allowed_animal(values)
             if allowed_picture:
                 timestamp = datetime.now().timestamp()
                 saved_object = save_to_bucket(timestamp, index, base_64_binary)
                 if saved_object['uploaded']:
                     response_list.append(saved_object)
-                else :
+                else:
                     body = {
                         "uploaded": False,
                         "path": '',
@@ -141,5 +146,6 @@ def lambda_handler(event, context):
     return {
         "statusCode": 200,
         "body": json.dumps({
-            'list':response_list})
+            'list': response_list})
     }
+
