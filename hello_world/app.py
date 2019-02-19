@@ -4,12 +4,15 @@ from decimal import Decimal
 import json
 import urllib
 import uuid
-import datetime
+from datetime import datetime
 import time
 import os
 import base64
+from utils import ANIMALS
+
 
 rekognition_client = boto3.client('rekognition')
+AWS_BUCKET_NAME = 'aws-flores-test'
 # import requests
 
 def detect_label(image):
@@ -21,14 +24,37 @@ def detect_label(image):
         print("Error processing detect label")
         raise e
 
-def from_encoded_string_to_file(encoded_string):
+def from_encoded_string_to_bytes(file):
+    with open(file, "rb") as cf:
+        base64_image = base64.b64encode(cf.read())
+        base_64_binary = base64.decodebytes(base64_image)
+    return base_64_binary
+
+def detect_allowed_animal(labels):
+    labels_tested = [ label for label in labels if label.lower() in ANIMALS]
+    return bool(len(labels_tested))
+
+def save_to_bucket(timestamp,counter, bytes):
+    file_name = f'{timestamp}_{counter}.jpg'
+    s3 = boto3.resource('s3')
+    bucket = s3.Bucket(AWS_BUCKET_NAME)
     try:
-        decoded_image = base64.b64decode(encoded_string).decode("utf-8", "ignore")
-        return decoded_image
+        bucket.put_object(
+            ACL='public-read',
+            ContentType='application/json',
+            Key=file_name,
+            Body=bytes,
+        )
     except Exception as e:
-        print("Error processing image")
+        print(f'Error {e}')
         raise e
 
+    return {
+        "uploaded": True,
+        "bucket": AWS_BUCKET_NAME,
+        "path": file_name,
+        "position": counter
+    }
 def lambda_handler(event, context):
     """Sample pure Lambda function
 
@@ -61,50 +87,59 @@ def lambda_handler(event, context):
     #request = json.dumps(event, indent=2, skipkeys=True)
     body = json.loads(event['body'])
     #image = body['image']
+
+    #Images' length
+    images_counter = 4
     print(body)
     print(body['image'])
 
-    #image = open('cat1.jpeg', 'rb')
-    #image_read = image.read()
-    #image_64_encode = base64.encodestring(image_read)
+    #Get images from app
+    request = {
+        'images_length': 4,
+        'pictures': [
+            'cat1.jpeg',
+            'cat1.jpeg',
+            'cat1.jpeg',
+            'cat1.jpeg'
+        ]
+    }
+    response_list = []
+    index = 0
+    for picture in request['pictures']:
+        #get binary from encoded string
+        base_64_binary = from_encoded_string_to_bytes(picture)
+        try:
+            response = detect_label(base_64_binary)
+            labels = [{label_prediction['Name']: label_prediction['Confidence']} for label_prediction in response['Labels']]
+            keys = [ list(label.keys())[0] for label in labels]
+            values = [ list(label)[0] for label in labels]
+            allowed_picture = detect_allowed_animal(values)
+            if allowed_picture:
+                timestamp = datetime.now().timestamp()
+                saved_object = save_to_bucket(timestamp, index, base_64_binary)
+                if saved_object['uploaded']:
+                    response_list.append(saved_object)
+                else :
+                    body = {
+                        "uploaded": False,
+                        "path": '',
+                        "position": index,
+                    }
+                    response_list.append(body)
+            else:
+                body = {
+                    "uploaded": False,
+                    "path": '',
+                    "position": index,
+                }
+                response_list.append(body)
 
-    #image_64_decode = base64.decodestring(image_64_encode)
-
-    with open('cat1.jpeg', "rb") as cf:
-        base64_image = base64.b64encode(cf.read())
-        base_64_binary = base64.decodebytes(base64_image)
-
-    #image_result = open('deer_decode.gif', 'wb')
-    #image_result.write(image_64_decode)
-    #print("Received event: " + request['body'])
-    try:
-        #response1 = from_encoded_string_to_file(base_64_binary)
-        #print(response1)
-        response = detect_label(base_64_binary)
-        labels = [{label_prediction['Name']: Decimal(str(label_prediction['Confidence']))} for label_prediction in
-              response['Labels']]
-        keys = [ list(label.keys())[0] for label in labels]
-        values = [ list(label)[0] for label in labels]
-        print(keys)
-            #key= list(label.keys())[0]
-            #print(type(key))
-            #print(key)
-            #print(label[key])
-            #print(label.values()[0])
-            #print(value)
-        # Get the timestamp.
-        print(labels)
-        ts = time.time()
-        timestamp = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
-        return {
-            "statusCode": 200,
-            "body": json.dumps({
-                "message": "Success"
-                # "location": ip.text.replace("\n", "")
-            })
-        }
-    except Exception as e:
-        print("Error")
-        #print("Error processing object {} from bucket {}. Event {}".format(key, bucket, json.dumps(event, indent=2)))
-        raise e
-
+        except Exception as e:
+            print("Error")
+            raise e
+        index += 1
+    return {
+        "statusCode": 200,
+        "body": json.dumps({
+            'list':response_list})
+    }
