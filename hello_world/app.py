@@ -15,6 +15,19 @@ rekognition_client = boto3.client('rekognition')
 AWS_BUCKET_NAME = 'aws-flores-test'
 # import requests
 
+def encodeImageStr(file): 
+    with open(file, "rb") as image_file:
+        encoded_string = base64.b64encode(image_file.read()).decode('ascii')
+    return encoded_string
+
+def decodeImageStr(encodedImage):
+    decodedImage = base64.b64decode(encodedImage)
+    return decodedImage
+
+def encodeBytes(b):
+    encodedBytes =  base64.b64encode(b)
+    return encodedBytes
+
 def detect_label(image):
     try:
         response = rekognition_client.detect_labels(Image={'Bytes': image},MaxLabels=12,
