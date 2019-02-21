@@ -31,7 +31,15 @@ def encodeBytes(b):
 def detect_label(image):
     try:
         response = rekognition_client.detect_labels(Image={'Bytes': image},MaxLabels=12,
-        MinConfidence=70)
+        MinConfidence=80)
+        return response
+    except Exception as e:
+        print("Error processing detect label rekognition")
+        raise e
+
+def detect_moderation_label(image):
+    try:
+        response = rekognition_client.detect_moderatoin_labels(Image={'Bytes': image},MaxLabels=12, MinConfidence=80)
         return response
     except Exception as e:
         print("Error processing detect label rekognition")
@@ -107,14 +115,17 @@ def lambda_handler(event, context):
 
     #     raise e
     #request = json.dumps(event, indent=2, skipkeys=True)
+
+    #response2 = encodeImageStr('cat1.jpeg')
+    #response2 = encodeImageStr('w5.jpg')
+    print('reponse2')
+    print(response2)
+    print('reponse2')
     request = json.loads(event['body'])
     images_length = request['images_length']
     pictures = request['pictures']
     print(request)
     #image = body['image']
-    for pic in pictures:
-        print(pic)
-
     #Images' length
     images_counter = 4
     #Get images from app
@@ -122,11 +133,12 @@ def lambda_handler(event, context):
     index = 0
     for picture in request['pictures']:
         # get binary from encoded string
-        base_64_binary = from_encoded_string_to_bytes(picture)
+        base_64_binary = decodeImageStr(picture)
         print('binary')
         print(base_64_binary)
         try:
-            response = detect_label(base_64_binary)
+            #response = detect_label(base_64_binary)
+            response = detect_moderation_label(base_64_binary)
             labels = [{label_prediction['Name']: label_prediction['Confidence']} for label_prediction in
                       response['Labels']]
             keys = [list(label.keys())[0] for label in labels]
